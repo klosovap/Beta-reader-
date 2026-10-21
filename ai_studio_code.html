@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stáhnout Beta Reader ZIP</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #FAF7F2; color: #4A3E39; padding: 24px; text-align: center; }
+        .card { background: #FFFDF9; border-radius: 16px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 480px; margin: 40px auto; }
+        button { background: #FFD8B8; color: #4A3E39; border: none; font-size: 18px; font-weight: bold; padding: 14px 28px; border-radius: 28px; cursor: pointer; }
+        #status { margin-top: 16px; font-size: 14px; color: #8D7B74; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Beta Reader pro Android</h2>
+        <p>Stisknutím tlačítka níže vygenerujete a stáhnete kompletní zdrojový projekt zabalený v ZIP archivu.</p>
+        <button id="btn" onclick="generateZip()">📦 Stáhnout projekt jako ZIP</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        async function generateZip() {
+            const btn = document.getElementById('btn');
+            const status = document.getElementById('status');
+            btn.disabled = true;
+            status.innerText = "Sestavuji ZIP archiv...";
+
+            const zip = new JSZip();
+
+            // Zde jsou vloženy všechny projektové soubory
+            zip.file(".github/workflows/build-apk.yml", `name: Sestaveni Android APK
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Nastavit Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+      - name: Stahnout Gradle Wrapper JAR
+        run: |
+          mkdir -p gradle/wrapper
+          curl -sLo gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+      - name: Sestavit APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Exportovat APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BetaReader-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+`);
+
+            zip.file("settings.gradle.kts", `pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "BetaReader"
+include(":app")
+`);
+
+            zip.file("build.gradle.kts", `plugins {
+    id("com.android.application") version "8.4.1" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+    id("com.google.devtools.ksp") version "1.9.24-1.0.20" apply false
+}
+`);
+
+            zip.file("gradle.properties", `org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.nonTransitiveRClass=true
+kotlin.code.style=official
+`);
+
+            zip.file("gradle/wrapper/gradle-wrapper.properties", `distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+`);
+
+            // Spouštěcí wrapper skript
+            zip.file("gradlew", `#!/bin/sh
+PRG="$0"
+while [ -h "$PRG" ] ; do
+    ls=\`ls -ld "$PRG"\`
+    link=\`expr "$ls" : '.*-> \\(.*\\)$'\`
+    if expr "$link" : '/.*' > /dev/null; then
+        PRG="$link"
+    else
+        PRG=\`dirname "$PRG"\`"/$link"
+    fi
+done
+SAVED=\`pwd\`
+cd "\`dirname \\"$PRG\\"\`/" >/dev/null
+APP_HOME=\`pwd -P\`
+cd "$SAVED" >/dev/null
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+exec java -Xmx64m $JAVA_OPTS -Dorg.gradle.appname=gradlew -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"
+`);
+
+            zip.file("app/build.gradle.kts", `plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
+}
+
+android {
+    namespace = "cz.betareader.app"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "cz.betareader.app"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
+    implementation("androidx.activity:activity-compose:1.9.0")
+
+    val composeBom = platform("androidx.compose:compose-bom:2024.05.00")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
+
+    val roomVersion = "2.6.1"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
+}
+`);
+
+            zip.file("app/proguard-rules.pro", `-keepattributes *Annotation*
+-dontwarn org.json.**
+`);
+
+            zip.file("app/src/main/AndroidManifest.xml", `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="true"
+        android:icon="@android:drawable/ic_menu_edit"
+        android:label="Beta Reader"
+        android:roundIcon="@android:drawable/ic_menu_edit"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.BetaReader">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+`);
+
+            zip.file("app/src/main/res/values/themes.xml", `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BetaReader" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/MainActivity.kt", `package cz.betareader.app
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.compose.runtime.*
+import cz.betareader.app.data.DocumentEntity
+import cz.betareader.app.ui.library.LibraryScreen
+import cz.betareader.app.ui.library.LibraryViewModel
+import cz.betareader.app.ui.reader.ReaderScreen
+import cz.betareader.app.ui.reader.ReaderViewModel
+import cz.betareader.app.ui.theme.BetaReaderTheme
+
+class MainActivity : ComponentActivity() {
+    private val libraryViewModel: LibraryViewModel by viewModels()
+    private val readerViewModel: ReaderViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        intent?.data?.let { uri ->
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                libraryViewModel.addDocumentFromUri(uri)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        setContent {
+            BetaReaderTheme {
+                var activeDocument by remember { mutableStateOf<DocumentEntity?>(null) }
+                if (activeDocument == null) {
+                    LibraryScreen(
+                        viewModel = libraryViewModel,
+                        onOpenDocument = { doc -> activeDocument = doc }
+                    )
+                } else {
+                    ReaderScreen(
+                        document = activeDocument!!,
+                        viewModel = readerViewModel,
+                        onBack = { activeDocument = null }
+                    )
+                }
+            }
+        }
+    }
+}
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/data/DocumentEntity.kt", `package cz.betareader.app.data
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "documents")
+data class DocumentEntity(
+    @PrimaryKey val uri: String,
+    val title: String,
+    val mimeType: String,
+    val fileExtension: String,
+    val lastReadPosition: Int = 0,
+    val totalSizeOrPages: Int = 0,
+    val isArchived: Boolean = false,
+    val lastOpenedAt: Long = System.currentTimeMillis()
+)
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/data/AnnotationEntity.kt", `package cz.betareader.app.data
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "annotations")
+data class AnnotationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val documentUri: String,
+    val pageOrSectionIndex: Int,
+    val selectedText: String,
+    val prefixContext: String,
+    val suffixContext: String,
+    val startOffset: Int,
+    val endOffset: Int,
+    val pdfCoordinatesJson: String? = null,
+    val colorHex: String,
+    val commentText: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/data/AppDao.kt", `package cz.betareader.app.data
+
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface AppDao {
+    @Query("SELECT * FROM documents WHERE isArchived = 0 ORDER BY lastOpenedAt DESC")
+    fun getActiveDocuments(): Flow<List<DocumentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDocument(document: DocumentEntity)
+
+    @Update
+    suspend fun updateDocument(document: DocumentEntity)
+
+    @Query("SELECT * FROM annotations WHERE documentUri = :docUri ORDER BY pageOrSectionIndex ASC, startOffset ASC")
+    fun getAnnotationsForDocument(docUri: String): Flow<List<AnnotationEntity>>
+
+    @Query("SELECT COUNT(*) FROM annotations WHERE documentUri = :docUri")
+    fun getAnnotationCount(docUri: String): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAnnotation(annotation: AnnotationEntity): Long
+
+    @Update
+    suspend fun updateAnnotation(annotation: AnnotationEntity)
+
+    @Delete
+    suspend fun deleteAnnotation(annotation: AnnotationEntity)
+}
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/data/AppDatabase.kt", `package cz.betareader.app.data
+
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+
+@Database(entities = [DocumentEntity::class, AnnotationEntity::class], version = 1, exportSchema = false)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun appDao(): AppDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "beta_reader_database"
+                ).fallbackToDestructiveMigration().build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/parser/DocumentType.kt", `package cz.betareader.app.parser
+
+enum class DocumentType(val extension: String) {
+    PDF("pdf"),
+    DOCX("docx"),
+    EPUB("epub"),
+    ODT("odt"),
+    RTF("rtf"),
+    TXT("txt"),
+    UNKNOWN("");
+
+    companion object {
+        fun fromFileName(fileName: String): DocumentType {
+            val ext = fileName.substringAfterLast('.', "").lowercase()
+            return entries.firstOrNull { it.extension == ext } ?: UNKNOWN
+        }
+    }
+}
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/parser/DocumentEngine.kt", `package cz.betareader.app.parser
+
+import android.content.Context
+import android.net.Uri
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
+import java.io.BufferedReader
+import java.io.InputStream
+import java.util.zip.ZipInputStream
+
+object DocumentEngine {
+    fun extractContent(context: Context, uri: Uri, type: DocumentType): String {
+        return context.contentResolver.openInputStream(uri)?.use { stream ->
+            when (type) {
+                DocumentType.TXT -> stream.bufferedReader(Charsets.UTF_8).use(BufferedReader::readText)
+                DocumentType.DOCX -> readDocxText(stream)
+                DocumentType.ODT -> readOdtText(stream)
+                DocumentType.EPUB -> readEpubText(stream)
+                DocumentType.RTF -> readRtfText(stream)
+                DocumentType.PDF -> "PDF_NATIVE_RENDERER"
+                DocumentType.UNKNOWN -> stream.bufferedReader(Charsets.UTF_8).use(BufferedReader::readText)
+            }
+        } ?: "Nelze načíst soubor."
+    }
+
+    private fun readDocxText(stream: InputStream): String {
+        val sb = StringBuilder()
+        ZipInputStream(stream).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (entry.name == "word/document.xml") {
+                    parseXmlStream(zip, sb, listOf("w:t", "t"), listOf("w:p", "p"))
+                    break
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        return sb.toString().ifEmpty { "Dokument DOCX neobsahuje čitelný text." }
+    }
+
+    private fun readOdtText(stream: InputStream): String {
+        val sb = StringBuilder()
+        ZipInputStream(stream).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (entry.name == "content.xml") {
+                    parseXmlStream(zip, sb, listOf("text:p", "text:span"), listOf("text:p"))
+                    break
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        return sb.toString().ifEmpty { "Dokument ODT neobsahuje čitelný text." }
+    }
+
+    private fun readEpubText(stream: InputStream): String {
+        val sb = StringBuilder()
+        ZipInputStream(stream).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (entry.name.endsWith(".xhtml", true) || entry.name.endsWith(".html", true)) {
+                    val content = zip.bufferedReader().readText()
+                    val cleanText = content.replace(Regex("<br\\\\s*/?>"), "\\n")
+                        .replace(Regex("</p>"), "\\n\\n")
+                        .replace(Regex("<[^>]*>"), "")
+                        .replace("&nbsp;", " ")
+                        .replace("&quot;", "\\"")
+                        .replace("&amp;", "&")
+                    sb.append(cleanText).append("\\n\\n")
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        return sb.toString().ifEmpty { "EPUB soubor neobsahuje čitelný obsah." }
+    }
+
+    private fun readRtfText(stream: InputStream): String {
+        val text = stream.bufferedReader().readText()
+        return text.replace(Regex("\\\\[a-z]+-?[0-9]* ?"), "").replace(Regex("[{}]"), "").trim()
+    }
+
+    private fun parseXmlStream(stream: InputStream, sb: StringBuilder, textTags: List<String>, paragraphTags: List<String>) {
+        val factory = XmlPullParserFactory.newInstance()
+        factory.isNamespaceAware = false
+        val parser = factory.newPullParser()
+        parser.setInput(stream, "UTF-8")
+        var eventType = parser.eventType
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            when (eventType) {
+                XmlPullParser.START_TAG -> {
+                    if (parser.name in paragraphTags && sb.isNotEmpty() && !sb.endsWith("\\n\\n")) {
+                        sb.append("\\n\\n")
+                    }
+                }
+                XmlPullParser.TEXT -> sb.append(parser.text)
+            }
+            eventType = parser.next()
+        }
+    }
+}
+`);
+
+            zip.file("app/src/main/java/cz/betareader/app/ui/theme/Color.kt", `package cz.betareader.app.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+val PastelCream = Color(0xFFFAF7F2)
+val PastelSurface = Color(0xFFFFFDF9)
+val PastelApricot = Color(0xFFFFD8B8)
+val PastelPink = Color(0xFFFFD1DC)
+val BrownAccent = Color(0xFF4A3E39)
+val BrownSecondary = Color(0xFF8D7B74)
+
+val HighlightYellow = Color(0xFFFFF176)
+val HighlightPink = Color(0xFFF48FB1)
+val HighlightApricot = Color(0xFFFFCC80)
+val HighlightGreen = Color(0xFFA5D6A7)
+val HighlightBlue = Color(0xFF90CAF9)
+
+fun getHighlightColors(): List<Pair<String, Color>> = listOf(
+    "#FFF176" to HighlightYellow,
+    "#F48FB1" to HighlightPink,
+    "#FFCC80" to HighlightApricot,
+    "#A5D6A7" to HighlightGreen,
+    "#90CAF9" to
